@@ -25,4 +25,18 @@ for message in consumer:
 
     transaction = message.value
 
-    print(transaction)
+    print("=" * 50)
+    print("Transaction Received")
+    print("=" * 50)
+
+    print("Step:", transaction["step"])
+    print("Type:", transaction["type"])
+    print("Amount:", transaction["amount"])
+    print("Sender:", transaction["nameOrig"])
+    print("Receiver:", transaction["nameDest"])
+    print("Fraud Label:", transaction["isFraud"])
+
+    if "timestamp" in transaction:
+        print("Timestamp:", transaction["timestamp"])
+
+    print()
