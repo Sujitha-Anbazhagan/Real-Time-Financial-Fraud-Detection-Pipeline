@@ -34,7 +34,12 @@ for message in consumer:
     print("Amount:", transaction["amount"])
     print("Sender:", transaction["nameOrig"])
     print("Receiver:", transaction["nameDest"])
-    print("Fraud Label:", transaction["isFraud"])
+    fraud = transaction["isFraud"]
+
+    if fraud == 1:
+        print("Status: 🚨 FRAUD DETECTED")
+    else:
+        print("Status: ✅ NORMAL")
 
     if "timestamp" in transaction:
         print("Timestamp:", transaction["timestamp"])
