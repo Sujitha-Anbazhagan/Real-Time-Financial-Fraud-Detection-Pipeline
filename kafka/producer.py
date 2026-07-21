@@ -3,7 +3,7 @@ import pandas as pd
 import json
 import time
 from datetime import datetime
-
+import random
 
 KAFKA_SERVER = "localhost:9092"
 TOPIC_NAME = "transactions"
@@ -28,9 +28,7 @@ df = pd.read_csv(
 
 count = 0
 
-
 print("Starting transaction stream...")
-
 
 for chunk in df:
 
@@ -40,20 +38,24 @@ for chunk in df:
 
         transaction["timestamp"] = str(datetime.now())
 
-
         producer.send(
             TOPIC_NAME,
             value=transaction
         )
 
-
         count += 1
 
+        print("=" * 60)
+        print(f"Transaction #{count}")
+        print(f"Type   : {transaction['type']}")
+        print(f"Amount : {transaction['amount']}")
+        print(f"Fraud  : {transaction['isFraud']}")
+        print("=" * 60)
 
-        print(
-            "Sent transaction:",
-            count
-        )
+        time.sleep(random.uniform(0.5, 2))
 
+producer.flush()
 
-        time.sleep(1)
+print("All transactions sent successfully!")
+
+producer.close()
