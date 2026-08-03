@@ -4,11 +4,13 @@ import json
 import time
 from datetime import datetime
 import random
+from pathlib import Path
 
 KAFKA_SERVER = "localhost:9092"
 TOPIC_NAME = "transactions"
 
-DATA_PATH = "data/PS_20174392719_1491204439457_log.csv"
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATA_PATH = BASE_DIR / "data" / "PS_20174392719_1491204439457_log.csv"
 
 
 producer = KafkaProducer(

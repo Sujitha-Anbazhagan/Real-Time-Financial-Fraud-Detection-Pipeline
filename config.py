@@ -19,7 +19,7 @@ PROCESSED_DATA_PATH = DATA_DIR / "processed_transactions.parquet"
 
 # Kafka configuration
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "fraud_detection")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "transactions")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "fraud_detection_group")
 
 # Cassandra configuration

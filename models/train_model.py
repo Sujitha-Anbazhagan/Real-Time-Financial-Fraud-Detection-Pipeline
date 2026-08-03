@@ -118,6 +118,11 @@ class FraudDetectionModel:
         """Save label encoders"""
         Path(encoders_path).parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(self.label_encoders, encoders_path)
+
+        if "type" in self.label_encoders:
+            singular_path = Path(encoders_path).with_name("label_encoder.pkl")
+            joblib.dump(self.label_encoders["type"], singular_path)
+
         logger.info(f"Label encoders saved to {encoders_path}")
 
 
@@ -125,8 +130,8 @@ def main():
     """Main training pipeline"""
     # Configuration
     data_path = Path(__file__).parent / "data" / "PS_20174392719_1491204439457_log.csv"
-    model_path = Path(__file__).parent / "models" / "fraud_detection_model.pkl"
-    encoders_path = Path(__file__).parent / "models" / "label_encoders.pkl"
+    model_path = Path(__file__).parent / "fraud_detection_model.pkl"
+    encoders_path = Path(__file__).parent / "label_encoders.pkl"
     
     try:
         # Initialize model
