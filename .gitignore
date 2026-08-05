@@ -1,17 +1,26 @@
 # Virtual environments
+
 .venv/
 .venv311/
 
 # Python cache
+
 __pycache__/
 *.pyc
 
 # Jupyter
+
 .ipynb_checkpoints/
 
 # Model files
+
 *.pkl
 
 # Dataset files
+
 *.csv
 data/*.csv
+
+# Spark Streaming checkpoint
+
+checkpoint/

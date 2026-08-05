@@ -1,5 +1,8 @@
 import os
 from pathlib import Path
+from uuid import uuid4
+from datetime import datetime
+
 
 import joblib
 import pandas as pd
@@ -35,17 +38,19 @@ if hadoop_home and os.path.exists(hadoop_home):
 # Spark Structured Streaming with Kafka requires the connector jar at runtime.
 # Without it, Spark raises: 'Failed to find data source: kafka'.
 # Keep this explicit so startup fails clearly and with a known package name.
-KAFKA_PACKAGE = os.getenv(
-    "SPARK_KAFKA_PACKAGE",
-    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.9",
+SPARK_PACKAGES = (
+    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.9,"
+    "com.datastax.spark:spark-cassandra-connector_2.12:3.5.0"
 )
 
 spark_builder = (
     SparkSession.builder
     .appName("RealTimeFraudDetection")
     .master("local[*]")
-    .config("spark.driver.host", "127.0.0.1")
-    .config("spark.driver.bindAddress", "127.0.0.1")
+    .config("spark.driver.host", "localhost")
+    .config("spark.driver.bindAddress", "localhost")
+    .config("spark.driver.port", "4040")
+    .config("spark.blockManager.port", "4041")
     .config("spark.sql.shuffle.partitions", "1")
     .config("spark.hadoop.io.nativeio.enabled", "false")
     .config("spark.hadoop.fs.defaultFS", "file:///")
@@ -61,8 +66,21 @@ spark_builder = (
         "spark.sql.warehouse.dir",
         str((PROJECT_ROOT / "tmp" / "spark-warehouse").resolve())
     )
-    .config("spark.jars.packages", KAFKA_PACKAGE)
+    .config("spark.jars.packages", SPARK_PACKAGES)
 )
+
+spark_builder = (
+    spark_builder
+    .config(
+        "spark.executorEnv.PYSPARK_PYTHON",
+        r"C:\Users\Suji\Desktop\Real-Time-Financial-Fraud-Detection-Pipeline\.venv311\Scripts\python.exe"
+    )
+    .config(
+        "spark.pyspark.python",
+        r"C:\Users\Suji\Desktop\Real-Time-Financial-Fraud-Detection-Pipeline\.venv311\Scripts\python.exe"
+    )
+)
+
 spark = spark_builder.getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")
 
@@ -114,7 +132,7 @@ try:
         .format("kafka")
         .option("kafka.bootstrap.servers", "localhost:9092")
         .option("subscribe", "transactions")
-        .option("startingOffsets", "earliest")
+        .option("startingOffsets", "latest")
         .option("failOnDataLoss", "false")
         .load()
     )
@@ -157,7 +175,58 @@ def predict_fraud(batch_df, batch_id):
     features = pandas_df[cols]
     pred = model.predict(features)
     pandas_df["prediction"] = pred.astype(int)
-    print(pandas_df[["amount", "type", "prediction"]])
+    pandas_df["id"] = [str(uuid4()) for _ in range(len(pandas_df))]
+    pandas_df["timestamp"] = str(datetime.now())
+
+    from pyspark.sql.types import (
+        StructType,
+        StructField,
+        StringType,
+        DoubleType,
+        IntegerType
+    )
+
+
+    output_schema = StructType([
+        StructField("id", StringType(), True),
+        StructField("amount", DoubleType(), True),
+        StructField("type", IntegerType(), True),
+        StructField("prediction", IntegerType(), True),
+        StructField("timestamp", StringType(), True)
+    ])
+
+
+    output_df = spark.createDataFrame(
+        pandas_df[
+            [
+                "id",
+                "amount",
+                "type",
+                "prediction",
+                "timestamp"
+            ]
+        ],
+        schema=output_schema
+    )
+
+    output_df.write \
+        .format("org.apache.spark.sql.cassandra") \
+        .mode("append") \
+        .options(
+            keyspace="fraud_detection",
+            table="transactions"
+        ) \
+        .save()
+
+    print(
+        pandas_df[
+            [
+                "amount",
+                "type",
+                "prediction"
+            ]
+        ]
+    )
 
 
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoint"

@@ -6,11 +6,18 @@ from datetime import datetime
 import random
 from pathlib import Path
 
+
 KAFKA_SERVER = "localhost:9092"
 TOPIC_NAME = "transactions"
 
+
 BASE_DIR = Path(__file__).resolve().parents[1]
-DATA_PATH = BASE_DIR / "data" / "PS_20174392719_1491204439457_log.csv"
+
+DATA_PATH = (
+    BASE_DIR
+    / "data"
+    / "PS_20174392719_1491204439457_log.csv"
+)
 
 
 producer = KafkaProducer(
@@ -30,7 +37,9 @@ df = pd.read_csv(
 
 count = 0
 
+
 print("Starting transaction stream...")
+
 
 for chunk in df:
 
@@ -40,12 +49,15 @@ for chunk in df:
 
         transaction["timestamp"] = str(datetime.now())
 
+
         producer.send(
             TOPIC_NAME,
             value=transaction
         )
 
+
         count += 1
+
 
         print("=" * 60)
         print(f"Transaction #{count}")
@@ -54,7 +66,9 @@ for chunk in df:
         print(f"Fraud  : {transaction['isFraud']}")
         print("=" * 60)
 
+
         time.sleep(random.uniform(0.5, 2))
+
 
 producer.flush()
 
