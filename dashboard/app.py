@@ -129,51 +129,52 @@ elif page == "Predictions":
     
     st.markdown("---")
     
-    if st.button("🔍 Predict Transaction", use_container_width=True):
-        try:
-            # Prepare data for API
-            transaction_data = {
-                "step": step,
-                "type": transaction_type,
-                "amount": amount,
-                "oldbalanceOrig": old_balance_orig,
-                "newbalanceOrig": new_balance_orig,
-                "oldbalanceDest": old_balance_dest,
-            }
-            
-            # Make API request
-            response = requests.post(
-                "http://localhost:8000/predict",
-                json=transaction_data,
-                timeout=5
-            )
-            
-            if response.status_code == 200:
-                prediction = response.json()
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if prediction['prediction'] == 'Fraud':
-                        st.error(f"⚠️ **FRAUD DETECTED**")
-                    else:
-                        st.success(f"✅ **LEGITIMATE**")
-                
-                with col2:
-                    confidence = np.random.uniform(0.85, 0.99)
-                    st.metric("Confidence", f"{confidence:.1%}")
-                
-                with col3:
-                    risk_level = np.random.choice(["Low", "Medium", "High"])
-                    st.metric("Risk Level", risk_level)
-            
-            else:
-                st.error("Error making prediction. Ensure API is running on localhost:8000")
-        
-        except requests.exceptions.ConnectionError:
-            st.warning("⚠️ Could not connect to API. Make sure it's running on localhost:8000")
-        except Exception as e:
-            st.error(f"Error: {str(e)}")
+if st.button("🔍 Predict Transaction", use_container_width=True):
+    try:
+        # Prepare data for API
+        transaction_data = {
+            "step": step,
+            "type": transaction_type,
+            "amount": amount,
+            "oldbalanceOrg": old_balance_orig,
+            "newbalanceOrig": new_balance_orig,
+            "oldbalanceDest": old_balance_dest,
+            "newbalanceDest": 0.0,
+            "isFlaggedFraud": 0
+        }
+
+        response = requests.post(
+            "http://localhost:8000/predict",
+            json=transaction_data,
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            prediction = response.json()
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                if prediction["prediction"] == "Fraud":
+                    st.error("⚠️ FRAUD DETECTED")
+                else:
+                    st.success("✅ LEGITIMATE")
+
+            with col2:
+                confidence = np.random.uniform(0.85, 0.99)
+                st.metric("Confidence", f"{confidence:.1%}")
+
+            with col3:
+                st.metric("Risk Level", prediction.get("risk", "Unknown"))
+
+        else:
+            st.error("Prediction failed")
+
+    except requests.exceptions.ConnectionError:
+        st.warning("⚠️ Could not connect to API. Make sure it is running.")
+
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
 
 # Analytics Page
 elif page == "Analytics":

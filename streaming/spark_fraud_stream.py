@@ -38,17 +38,20 @@ if hadoop_home and os.path.exists(hadoop_home):
 # Spark Structured Streaming with Kafka requires the connector jar at runtime.
 # Without it, Spark raises: 'Failed to find data source: kafka'.
 # Keep this explicit so startup fails clearly and with a known package name.
-SPARK_PACKAGES = (
-    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.9,"
-    "com.datastax.spark:spark-cassandra-connector_2.12:3.5.0"
-)
+
 
 spark_builder = (
     SparkSession.builder
     .appName("RealTimeFraudDetection")
     .master("local[*]")
-    .config("spark.driver.host", "localhost")
-    .config("spark.driver.bindAddress", "localhost")
+    .config("spark.driver.host", "127.0.0.1")
+    .config("spark.driver.bindAddress", "127.0.0.1")
+    .config("spark.executorEnv.PYSPARK_PYTHON",
+            r"C:\Users\Suji\Desktop\Real-Time-Financial-Fraud-Detection-Pipeline\.venv311\Scripts\python.exe")
+    .config("spark.pyspark.python",
+            r"C:\Users\Suji\Desktop\Real-Time-Financial-Fraud-Detection-Pipeline\.venv311\Scripts\python.exe")
+    .config("spark.python.worker.reuse", "true")
+    .config("spark.python.worker.connect.timeout", "120")
     .config("spark.driver.port", "4040")
     .config("spark.blockManager.port", "4041")
     .config("spark.sql.shuffle.partitions", "1")
@@ -66,20 +69,12 @@ spark_builder = (
         "spark.sql.warehouse.dir",
         str((PROJECT_ROOT / "tmp" / "spark-warehouse").resolve())
     )
-    .config("spark.jars.packages", SPARK_PACKAGES)
+    
 )
 
 spark_builder = (
     spark_builder
-    .config(
-        "spark.executorEnv.PYSPARK_PYTHON",
-        r"C:\Users\Suji\Desktop\Real-Time-Financial-Fraud-Detection-Pipeline\.venv311\Scripts\python.exe"
     )
-    .config(
-        "spark.pyspark.python",
-        r"C:\Users\Suji\Desktop\Real-Time-Financial-Fraud-Detection-Pipeline\.venv311\Scripts\python.exe"
-    )
-)
 
 spark = spark_builder.getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")

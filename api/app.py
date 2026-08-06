@@ -74,5 +74,6 @@ def predict(transaction: dict):
     result = "Fraud" if prediction == 1 else "Normal"
 
     return {
-        "prediction": result
+        "prediction": result,
+        "risk": "High" if result == "Fraud" else "Low"
     }
