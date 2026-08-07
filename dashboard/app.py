@@ -161,12 +161,31 @@ if st.button("🔍 Predict Transaction", use_container_width=True):
                     st.success("✅ LEGITIMATE")
 
             with col2:
-                confidence = np.random.uniform(0.85, 0.99)
-                st.metric("Confidence", f"{confidence:.1%}")
+                fraud_probability = prediction.get("fraud_probability")
+
+                if fraud_probability is not None:
+                    confidence = (
+                        fraud_probability
+                        if prediction["prediction"] == "Fraud"
+                        else 1 - fraud_probability
+                    )
+
+                    st.metric(
+                        "Model Confidence",
+                        f"{confidence:.1%}"
+                    )
+                else:
+                    st.metric("Model Confidence", "N/A")
 
             with col3:
-                st.metric("Risk Level", prediction.get("risk", "Unknown"))
+                risk = prediction.get("risk", "Unknown")
 
+                if risk == "High":
+                    st.error(f"🔴 Risk Level: {risk}")
+                elif risk == "Medium":
+                    st.warning(f"🟠 Risk Level: {risk}")
+                else:
+                    st.success(f"🟢 Risk Level: {risk}")
         else:
             st.error("Prediction failed")
 
