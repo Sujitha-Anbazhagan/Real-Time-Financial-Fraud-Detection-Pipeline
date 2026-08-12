@@ -1,8 +1,15 @@
 from fastapi import FastAPI, HTTPException
+from cassandra.cluster import Cluster
 import joblib
 import os
 import pandas as pd
+from datetime import datetime
 from sklearn.preprocessing import LabelEncoder
+
+
+# ============================================================
+# FastAPI Configuration
+# ============================================================
 
 app = FastAPI(
     title="Real-Time Fraud Detection API",
@@ -10,7 +17,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ============================================================
+# Project Paths
+# ============================================================
+
+BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.abspath(__file__)
+    )
+)
 
 MODEL_PATH = os.path.join(
     BASE_DIR,
@@ -19,25 +35,78 @@ MODEL_PATH = os.path.join(
 )
 
 
+# ============================================================
+# Cassandra Configuration
+# ============================================================
+
+CASSANDRA_HOST = "127.0.0.1"
+CASSANDRA_PORT = 9042
+CASSANDRA_KEYSPACE = "fraud_detection"
+
+
+try:
+
+    cassandra_cluster = Cluster(
+        [CASSANDRA_HOST],
+        port=CASSANDRA_PORT
+    )
+
+    cassandra_session = cassandra_cluster.connect(
+        CASSANDRA_KEYSPACE
+    )
+
+    print("Cassandra connection established")
+
+except Exception as e:
+
+    cassandra_cluster = None
+    cassandra_session = None
+
+    print(
+        f"Cassandra connection error: {e}"
+    )
+
+
+# ============================================================
+# Load Label Encoder
+# ============================================================
+
 def load_label_encoder():
+
     encoder_candidates = [
-        os.path.join(BASE_DIR, "models", "label_encoder.pkl"),
-        os.path.join(BASE_DIR, "models", "label_encoders.pkl"),
+        os.path.join(
+            BASE_DIR,
+            "models",
+            "label_encoder.pkl"
+        ),
+        os.path.join(
+            BASE_DIR,
+            "models",
+            "label_encoders.pkl"
+        ),
     ]
 
     for candidate in encoder_candidates:
+
         if os.path.exists(candidate):
+
             encoder = joblib.load(candidate)
 
             if isinstance(encoder, dict):
+
                 if "type" in encoder:
                     return encoder["type"]
 
                 if encoder:
-                    return next(iter(encoder.values()))
+                    return next(
+                        iter(
+                            encoder.values()
+                        )
+                    )
 
             return encoder
 
+    # Fallback encoder
     encoder = LabelEncoder()
 
     encoder.fit([
@@ -51,20 +120,38 @@ def load_label_encoder():
     return encoder
 
 
-# Load model and encoder when API starts
+# ============================================================
+# Load Model and Encoder
+# ============================================================
 
 try:
-    model = joblib.load(MODEL_PATH)
+
+    model = joblib.load(
+        MODEL_PATH
+    )
+
     label_encoder = load_label_encoder()
 
+    print("Fraud detection model loaded")
+    print("Label encoder loaded")
+
 except Exception as e:
+
     model = None
     label_encoder = None
-    print(f"Model loading error: {e}")
 
+    print(
+        f"Model loading error: {e}"
+    )
+
+
+# ============================================================
+# HOME
+# ============================================================
 
 @app.get("/")
 def home():
+
     return {
         "message": "Fraud Detection API is running",
         "status": "healthy",
@@ -72,48 +159,79 @@ def home():
     }
 
 
+# ============================================================
+# HEALTH CHECK
+# ============================================================
+
 @app.get("/health")
 def health_check():
+
     return {
         "status": "healthy",
         "model_loaded": model is not None,
-        "encoder_loaded": label_encoder is not None
+        "encoder_loaded": label_encoder is not None,
+        "cassandra_connected": cassandra_session is not None
     }
 
+
+# ============================================================
+# FRAUD PREDICTION
+# ============================================================
 
 @app.post("/predict")
 def predict(transaction: dict):
 
     if model is None:
+
         raise HTTPException(
             status_code=503,
             detail="Fraud detection model is not loaded"
         )
 
     try:
-        data = pd.DataFrame([transaction]).copy()
 
+        # ----------------------------------------------------
+        # Convert incoming JSON into DataFrame
+        # ----------------------------------------------------
+
+        data = pd.DataFrame(
+            [transaction]
+        ).copy()
+
+        # ----------------------------------------------------
         # Normalize transaction type
+        # ----------------------------------------------------
 
-        if "type" in data.columns:
+        if "type" not in data.columns:
 
-            data["type"] = (
-                data["type"]
-                .astype(str)
-                .str.upper()
-                .str.strip()
+            raise HTTPException(
+                status_code=400,
+                detail="Transaction type is required"
             )
 
-            try:
-                data["type"] = label_encoder.transform(
-                    data["type"]
-                )
+        data["type"] = (
+            data["type"]
+            .astype(str)
+            .str.upper()
+            .str.strip()
+        )
 
-            except ValueError as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid transaction type: {e}"
-                )
+        try:
+
+            data["type"] = label_encoder.transform(
+                data["type"]
+            )
+
+        except ValueError as e:
+
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid transaction type: {e}"
+            )
+
+        # ----------------------------------------------------
+        # Model features
+        # ----------------------------------------------------
 
         features = [
             "step",
@@ -126,6 +244,10 @@ def predict(transaction: dict):
             "isFlaggedFraud"
         ]
 
+        # ----------------------------------------------------
+        # Check missing columns
+        # ----------------------------------------------------
+
         missing_columns = [
             column
             for column in features
@@ -133,6 +255,7 @@ def predict(transaction: dict):
         ]
 
         if missing_columns:
+
             raise HTTPException(
                 status_code=400,
                 detail={
@@ -141,49 +264,298 @@ def predict(transaction: dict):
                 }
             )
 
+        # ----------------------------------------------------
+        # Make prediction
+        # ----------------------------------------------------
+
         prediction = int(
-            model.predict(data[features])[0]
+            model.predict(
+                data[features]
+            )[0]
         )
 
-        result = "Fraud" if prediction == 1 else "Normal"
+        # ----------------------------------------------------
+        # Get fraud probability
+        # ----------------------------------------------------
 
-        probability = None
-
-        if hasattr(model, "predict_proba"):
+        if hasattr(
+            model,
+            "predict_proba"
+        ):
 
             probabilities = model.predict_proba(
                 data[features]
             )[0]
 
-            probability = float(probabilities[1])
+            fraud_probability = float(
+                probabilities[1]
+            )
 
-        if result == "Fraud":
+        else:
+
+            fraud_probability = None
+
+        # ----------------------------------------------------
+        # Determine prediction result
+        # ----------------------------------------------------
+
+        result = (
+            "Fraud"
+            if prediction == 1
+            else "Normal"
+        )
+
+        # ----------------------------------------------------
+        # Determine risk level
+        # ----------------------------------------------------
+
+        if fraud_probability is None:
+
+            risk = "Unknown"
+
+        elif fraud_probability >= 0.70:
+
             risk = "High"
 
-        elif probability is not None and probability >= 0.30:
+        elif fraud_probability >= 0.30:
+
             risk = "Medium"
 
         else:
+
             risk = "Low"
+
+        # ----------------------------------------------------
+        # Calculate confidence
+        # ----------------------------------------------------
+
+        confidence = None
+
+        if fraud_probability is not None:
+
+            confidence = (
+                fraud_probability
+                if prediction == 1
+                else 1 - fraud_probability
+            )
+
+        # ----------------------------------------------------
+        # Final API response
+        # ----------------------------------------------------
 
         response = {
             "prediction": result,
-            "risk": risk
+            "risk": risk,
+            "fraud_probability": (
+                round(
+                    fraud_probability,
+                    4
+                )
+                if fraud_probability is not None
+                else None
+            ),
+            "confidence": (
+                round(
+                    confidence,
+                    4
+                )
+                if confidence is not None
+                else None
+            ),
+            "timestamp": datetime.now().isoformat()
         }
-
-        if probability is not None:
-            response["fraud_probability"] = round(
-                probability,
-                4
-            )
 
         return response
 
     except HTTPException:
+
         raise
 
     except Exception as e:
+
         raise HTTPException(
             status_code=500,
             detail=f"Prediction error: {str(e)}"
         )
+
+
+# ============================================================
+# GET TRANSACTIONS FROM CASSANDRA
+# ============================================================
+
+@app.get("/transactions")
+def get_transactions(limit: int = 50):
+
+    if cassandra_session is None:
+
+        raise HTTPException(
+            status_code=503,
+            detail="Cassandra is not connected"
+        )
+
+    try:
+
+        # ----------------------------------------------------
+        # Prevent very large queries
+        # ----------------------------------------------------
+
+        limit = max(
+            1,
+            min(limit, 100)
+        )
+
+        # ----------------------------------------------------
+        # Query Cassandra
+        # ----------------------------------------------------
+
+        query = f"""
+        SELECT
+            id,
+            amount,
+            prediction,
+            timestamp,
+            type
+        FROM transactions
+        LIMIT {limit}
+        """
+
+        rows = cassandra_session.execute(
+            query
+        )
+
+        # ----------------------------------------------------
+        # Convert Cassandra rows to JSON
+        # ----------------------------------------------------
+
+        transactions = []
+
+        for row in rows:
+
+            transactions.append(
+                {
+                    "id": str(row.id),
+                    "amount": float(row.amount),
+                    "prediction": int(row.prediction),
+                    "timestamp": str(row.timestamp),
+                    "type": int(row.type)
+                }
+            )
+
+        return {
+            "count": len(transactions),
+            "transactions": transactions
+        }
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+# ============================================================
+# TRANSACTION STATISTICS
+# ============================================================
+
+@app.get("/stats")
+def get_stats():
+
+    if cassandra_session is None:
+
+        raise HTTPException(
+            status_code=503,
+            detail="Cassandra is not connected"
+        )
+
+    try:
+
+        # ----------------------------------------------------
+        # Query transactions
+        # ----------------------------------------------------
+
+        query = """
+        SELECT
+            amount,
+            prediction,
+            type,
+            timestamp
+        FROM transactions
+        LIMIT 100
+        """
+
+        rows = cassandra_session.execute(
+            query
+        )
+
+        transactions = list(rows)
+
+        # ----------------------------------------------------
+        # Calculate statistics
+        # ----------------------------------------------------
+
+        total_transactions = len(
+            transactions
+        )
+
+        fraud_transactions = sum(
+            1
+            for row in transactions
+            if row.prediction == 1
+        )
+
+        normal_transactions = (
+            total_transactions
+            - fraud_transactions
+        )
+
+        total_amount = sum(
+            float(row.amount)
+            for row in transactions
+            if row.amount is not None
+        )
+
+        fraud_amount = sum(
+            float(row.amount)
+            for row in transactions
+            if (
+                row.amount is not None
+                and row.prediction == 1
+            )
+        )
+
+        fraud_rate = (
+            fraud_transactions / total_transactions
+            if total_transactions > 0
+            else 0
+        )
+
+        # ----------------------------------------------------
+        # Return statistics
+        # ----------------------------------------------------
+
+        return {
+            "total_transactions": total_transactions,
+            "fraud_transactions": fraud_transactions,
+            "normal_transactions": normal_transactions,
+            "fraud_rate": round(
+                fraud_rate,
+                4
+            ),
+            "total_amount": round(
+                total_amount,
+                2
+            ),
+            "fraud_amount": round(
+                fraud_amount,
+                2
+            )
+        }
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
