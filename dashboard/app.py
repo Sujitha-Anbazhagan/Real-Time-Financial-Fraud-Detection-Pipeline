@@ -19,6 +19,62 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
+# API Configuration
+# ============================================================
+
+API_URL = "http://localhost:8000"
+
+
+# ============================================================
+# API FUNCTIONS
+# ============================================================
+
+def get_stats():
+
+    try:
+
+        response = requests.get(
+            f"{API_URL}/stats",
+            timeout=5
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.exceptions.RequestException as e:
+
+        logger.error(
+            f"Error getting stats: {e}"
+        )
+
+        return None
+
+
+def get_transactions(limit=50):
+
+    try:
+
+        response = requests.get(
+            f"{API_URL}/transactions",
+            params={"limit": limit},
+            timeout=5
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.exceptions.RequestException as e:
+
+        logger.error(
+            f"Error getting transactions: {e}"
+        )
+
+        return None
+
+
+# ============================================================
 # Page Configuration
 # ============================================================
 
@@ -58,6 +114,7 @@ st.markdown(
 # ============================================================
 
 st.title("🔐 Real-Time Fraud Detection Dashboard")
+
 st.markdown("---")
 
 
@@ -66,11 +123,17 @@ st.markdown("---")
 # ============================================================
 
 with st.sidebar:
+
     st.header("Navigation")
 
     page = st.radio(
         "Select a page:",
-        ["Home", "Predictions", "Analytics", "Settings"],
+        [
+            "Home",
+            "Predictions",
+            "Analytics",
+            "Settings"
+        ],
     )
 
 
@@ -80,126 +143,223 @@ with st.sidebar:
 
 if page == "Home":
 
-    col1, col2, col3, col4 = st.columns(4)
+    stats = get_stats()
 
-    with col1:
-        st.metric(
-            "Total Transactions",
-            "2.5M",
-            "+12%",
+    if stats is None:
+
+        st.error(
+            "⚠️ Could not connect to the FastAPI server."
         )
 
-    with col2:
-        st.metric(
-            "Fraud Cases Detected",
-            "1,245",
-            "+8%",
+        st.info(
+            "Make sure FastAPI is running on "
+            "http://localhost:8000"
         )
 
-    with col3:
-        st.metric(
-            "Detection Rate",
-            "98.7%",
-            "+2.1%",
+    else:
+
+        # ----------------------------------------------------
+        # Dashboard Metrics
+        # ----------------------------------------------------
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        total_transactions = stats.get(
+            "total_transactions",
+            0
         )
 
-    with col4:
-        st.metric(
-            "API Latency (ms)",
-            "42",
-            "-5ms",
+        fraud_transactions = stats.get(
+            "fraud_transactions",
+            0
         )
+
+        normal_transactions = stats.get(
+            "normal_transactions",
+            0
+        )
+
+        fraud_rate = stats.get(
+            "fraud_rate",
+            0
+        )
+
+        with col1:
+
+            st.metric(
+                "Total Transactions",
+                f"{total_transactions:,}"
+            )
+
+        with col2:
+
+            st.metric(
+                "Fraud Cases Detected",
+                f"{fraud_transactions:,}"
+            )
+
+        with col3:
+
+            st.metric(
+                "Fraud Rate",
+                f"{fraud_rate:.2%}"
+            )
+
+        with col4:
+
+            st.metric(
+                "Normal Transactions",
+                f"{normal_transactions:,}"
+            )
 
     st.markdown("---")
 
-    # --------------------------------------------------------
-    # Daily Fraud Cases
-    # --------------------------------------------------------
 
-    col1, col2 = st.columns(2)
+    # ========================================================
+    # REAL TRANSACTION DATA
+    # ========================================================
 
-    with col1:
-        st.subheader("📊 Daily Fraud Cases")
+    transaction_data = get_transactions(
+        limit=100
+    )
 
-        dates = pd.date_range(
-            end=datetime.now(),
-            periods=30,
+
+    if transaction_data is not None:
+
+        transactions = transaction_data.get(
+            "transactions",
+            []
         )
 
-        fraud_cases = np.random.randint(
-            20,
-            100,
-            30,
+    else:
+
+        transactions = []
+
+
+    if transactions:
+
+        df = pd.DataFrame(
+            transactions
         )
 
-        fig = go.Figure()
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"]
+        )
 
-        fig.add_trace(
-            go.Scatter(
-                x=dates,
-                y=fraud_cases,
-                mode="lines+markers",
-                name="Fraud Cases",
-                line=dict(
-                    color="red",
-                    width=2,
-                ),
-                marker=dict(
-                    size=6,
-                ),
+
+        # ====================================================
+        # DAILY FRAUD CASES
+        # ====================================================
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            st.subheader(
+                "📊 Daily Fraud Cases"
             )
-        )
 
-        fig.update_layout(
-            title="Last 30 Days",
-            xaxis_title="Date",
-            yaxis_title="Number of Cases",
-            hovermode="x unified",
-            height=400,
-        )
+            fraud_df = df[
+                df["prediction"] == 1
+            ].copy()
 
-        st.plotly_chart(
-            fig,
-            width="stretch",
-        )
+            if not fraud_df.empty:
 
-    # --------------------------------------------------------
-    # Transaction Volume
-    # --------------------------------------------------------
+                fraud_df["date"] = (
+                    fraud_df["timestamp"]
+                    .dt.date
+                )
 
-    with col2:
-        st.subheader("💰 Transaction Volume")
+                daily_fraud = (
+                    fraud_df
+                    .groupby("date")
+                    .size()
+                    .reset_index(
+                        name="fraud_cases"
+                    )
+                )
 
-        transaction_amounts = np.random.lognormal(
-            mean=5,
-            sigma=2,
-            size=30,
-        )
+                fig = go.Figure()
 
-        fig = go.Figure()
+                fig.add_trace(
+                    go.Scatter(
+                        x=daily_fraud["date"],
+                        y=daily_fraud["fraud_cases"],
+                        mode="lines+markers",
+                        name="Fraud Cases",
+                    )
+                )
 
-        fig.add_trace(
-            go.Bar(
-                x=dates,
-                y=transaction_amounts,
-                name="Transaction Volume",
-                marker=dict(
-                    color="steelblue",
-                ),
+                fig.update_layout(
+                    title="Fraud Cases by Date",
+                    xaxis_title="Date",
+                    yaxis_title="Number of Cases",
+                    hovermode="x unified",
+                    height=400,
+                )
+
+                st.plotly_chart(
+                    fig,
+                    width="stretch",
+                )
+
+            else:
+
+                st.info(
+                    "No fraud transactions found."
+                )
+
+
+        # ====================================================
+        # TRANSACTION VOLUME
+        # ====================================================
+
+        with col2:
+
+            st.subheader(
+                "💰 Transaction Volume"
             )
-        )
 
-        fig.update_layout(
-            title="Last 30 Days",
-            xaxis_title="Date",
-            yaxis_title="Total Amount ($)",
-            hovermode="x unified",
-            height=400,
-        )
+            daily_volume = (
+                df.groupby(
+                    df["timestamp"].dt.date
+                )["amount"]
+                .sum()
+                .reset_index()
+            )
 
-        st.plotly_chart(
-            fig,
-            width="stretch",
+            daily_volume.columns = [
+                "date",
+                "amount"
+            ]
+
+            fig = go.Figure()
+
+            fig.add_trace(
+                go.Bar(
+                    x=daily_volume["date"],
+                    y=daily_volume["amount"],
+                    name="Transaction Volume",
+                )
+            )
+
+            fig.update_layout(
+                title="Transaction Volume by Date",
+                xaxis_title="Date",
+                yaxis_title="Total Amount",
+                height=400,
+            )
+
+            st.plotly_chart(
+                fig,
+                width="stretch",
+            )
+
+
+    else:
+
+        st.info(
+            "No transaction data available from Cassandra."
         )
 
 
@@ -209,9 +369,12 @@ if page == "Home":
 
 elif page == "Predictions":
 
-    st.subheader("🔮 Make Predictions")
+    st.subheader(
+        "🔮 Make Predictions"
+    )
 
     col1, col2 = st.columns(2)
+
 
     # --------------------------------------------------------
     # Transaction Information
@@ -243,6 +406,7 @@ elif page == "Predictions":
             min_value=0.0,
             value=9000.0,
         )
+
 
     # --------------------------------------------------------
     # Additional Transaction Information
@@ -278,7 +442,9 @@ elif page == "Predictions":
             value=False,
         )
 
+
     st.markdown("---")
+
 
     # --------------------------------------------------------
     # Prediction Button
@@ -291,27 +457,38 @@ elif page == "Predictions":
 
         try:
 
-            # Prepare transaction for API
             transaction_data = {
                 "step": int(step),
                 "type": transaction_type,
                 "amount": float(amount),
-                "oldbalanceOrg": float(old_balance_orig),
-                "newbalanceOrig": float(new_balance_orig),
-                "oldbalanceDest": float(old_balance_dest),
-                "newbalanceDest": float(new_balance_dest),
-                "isFlaggedFraud": int(is_flagged_fraud),
+                "oldbalanceOrg": float(
+                    old_balance_orig
+                ),
+                "newbalanceOrig": float(
+                    new_balance_orig
+                ),
+                "oldbalanceDest": float(
+                    old_balance_dest
+                ),
+                "newbalanceDest": float(
+                    new_balance_dest
+                ),
+                "isFlaggedFraud": int(
+                    is_flagged_fraud
+                ),
             }
+
 
             # ------------------------------------------------
             # Send request to API
             # ------------------------------------------------
 
             response = requests.post(
-                "http://localhost:8000/predict",
+                f"{API_URL}/predict",
                 json=transaction_data,
                 timeout=5,
             )
+
 
             # ------------------------------------------------
             # Successful Response
@@ -322,9 +499,13 @@ elif page == "Predictions":
                 prediction = response.json()
 
                 st.markdown("---")
-                st.subheader("📋 Prediction Result")
+
+                st.subheader(
+                    "📋 Prediction Result"
+                )
 
                 col1, col2, col3 = st.columns(3)
+
 
                 # ------------------------------------------------
                 # Prediction Status
@@ -340,14 +521,19 @@ elif page == "Predictions":
                         prediction_value,
                         str,
                     ):
+
                         is_fraud = (
                             prediction_value.lower()
                             == "fraud"
                         )
+
                     else:
+
                         is_fraud = (
-                            int(prediction_value) == 1
+                            int(prediction_value)
+                            == 1
                         )
+
 
                     if is_fraud:
 
@@ -360,6 +546,7 @@ elif page == "Predictions":
                         st.success(
                             "✅ NORMAL TRANSACTION"
                         )
+
 
                 # ------------------------------------------------
                 # Fraud Probability
@@ -389,6 +576,7 @@ elif page == "Predictions":
                             "N/A",
                         )
 
+
                 # ------------------------------------------------
                 # Risk Level
                 # ------------------------------------------------
@@ -397,27 +585,8 @@ elif page == "Predictions":
 
                     risk = prediction.get(
                         "risk",
-                        None,
+                        "Unknown"
                     )
-
-                    if risk is None:
-
-                        if (
-                            fraud_probability is not None
-                        ):
-
-                            if fraud_probability >= 0.8:
-                                risk = "High"
-
-                            elif fraud_probability >= 0.5:
-                                risk = "Medium"
-
-                            else:
-                                risk = "Low"
-
-                        else:
-
-                            risk = "Unknown"
 
                     if risk == "High":
 
@@ -443,12 +612,16 @@ elif page == "Predictions":
                             f"Risk Level: {risk}"
                         )
 
+
                 # ------------------------------------------------
                 # Transaction Details
                 # ------------------------------------------------
 
                 st.markdown("---")
-                st.subheader("Transaction Details")
+
+                st.subheader(
+                    "Transaction Details"
+                )
 
                 result_data = pd.DataFrame(
                     {
@@ -473,15 +646,22 @@ elif page == "Predictions":
                     }
                 )
 
-                # Ensure Streamlit/PyArrow receives a consistent string column.
-                result_data["Field"] = result_data["Field"].astype(str)
-                result_data["Value"] = result_data["Value"].astype(str)
+                result_data["Field"] = (
+                    result_data["Field"]
+                    .astype(str)
+                )
+
+                result_data["Value"] = (
+                    result_data["Value"]
+                    .astype(str)
+                )
 
                 st.dataframe(
                     result_data,
                     width="stretch",
                     hide_index=True,
                 )
+
 
             # ------------------------------------------------
             # API Error
@@ -507,6 +687,7 @@ elif page == "Predictions":
                         response.text
                     )
 
+
         # ----------------------------------------------------
         # API Connection Error
         # ----------------------------------------------------
@@ -519,6 +700,7 @@ elif page == "Predictions":
                 "on http://localhost:8000"
             )
 
+
         # ----------------------------------------------------
         # Timeout
         # ----------------------------------------------------
@@ -528,6 +710,7 @@ elif page == "Predictions":
             st.error(
                 "⏱️ API request timed out."
             )
+
 
         # ----------------------------------------------------
         # Other Errors
@@ -550,7 +733,13 @@ elif page == "Predictions":
 
 elif page == "Analytics":
 
-    st.subheader("📈 Advanced Analytics")
+    st.subheader(
+        "📈 Advanced Analytics"
+    )
+
+    # ========================================================
+    # MODEL PERFORMANCE + FEATURE IMPORTANCE
+    # ========================================================
 
     col1, col2 = st.columns(2)
 
@@ -560,7 +749,9 @@ elif page == "Analytics":
 
     with col1:
 
-        st.subheader("🎯 Model Performance")
+        st.subheader(
+            "🎯 Model Performance"
+        )
 
         metrics_df = pd.DataFrame(
             {
@@ -572,11 +763,11 @@ elif page == "Analytics":
                     "ROC-AUC",
                 ],
                 "Score": [
-                    0.987,
-                    0.945,
-                    0.923,
-                    0.934,
-                    0.992,
+                    0.9997,
+                    0.98,
+                    0.79,
+                    0.87,
+                    0.99,
                 ],
             }
         )
@@ -586,7 +777,6 @@ elif page == "Analytics":
                 go.Bar(
                     x=metrics_df["Metric"],
                     y=metrics_df["Score"],
-                    marker_color="lightseagreen",
                 )
             ]
         )
@@ -595,6 +785,9 @@ elif page == "Analytics":
             title="Model Metrics",
             xaxis_title="Metric",
             yaxis_title="Score",
+            yaxis=dict(
+                range=[0, 1]
+            ),
             height=400,
             showlegend=False,
         )
@@ -604,13 +797,16 @@ elif page == "Analytics":
             width="stretch",
         )
 
+
     # --------------------------------------------------------
     # Feature Importance
     # --------------------------------------------------------
 
     with col2:
 
-        st.subheader("⚠️ Feature Importance")
+        st.subheader(
+            "⚠️ Feature Importance"
+        )
 
         importance_df = pd.DataFrame(
             {
@@ -637,7 +833,6 @@ elif page == "Analytics":
                     y=importance_df["Feature"],
                     x=importance_df["Importance"],
                     orientation="h",
-                    marker_color="indianred",
                 )
             ]
         )
@@ -655,9 +850,16 @@ elif page == "Analytics":
             width="stretch",
         )
 
+
     st.markdown("---")
 
+
+    # ========================================================
+    # CONFUSION MATRIX + ROC CURVE
+    # ========================================================
+
     col1, col2 = st.columns(2)
+
 
     # --------------------------------------------------------
     # Confusion Matrix
@@ -665,12 +867,14 @@ elif page == "Analytics":
 
     with col1:
 
-        st.subheader("📊 Confusion Matrix")
+        st.subheader(
+            "📊 Confusion Matrix"
+        )
 
         cm = np.array(
             [
-                [23411, 89],
-                [312, 188],
+                [1270750, 27],
+                [351, 1288],
             ]
         )
 
@@ -692,6 +896,7 @@ elif page == "Analytics":
         )
 
         fig.update_layout(
+            title="Confusion Matrix",
             height=400,
         )
 
@@ -700,13 +905,16 @@ elif page == "Analytics":
             width="stretch",
         )
 
+
     # --------------------------------------------------------
     # ROC Curve
     # --------------------------------------------------------
 
     with col2:
 
-        st.subheader("📉 ROC Curve")
+        st.subheader(
+            "📉 ROC Curve"
+        )
 
         fpr = np.linspace(
             0,
@@ -714,7 +922,9 @@ elif page == "Analytics":
             100,
         )
 
-        tpr = 1 - (1 - fpr) ** 1.5
+        tpr = 1 - (
+            1 - fpr
+        ) ** 1.5
 
         fig = go.Figure()
 
@@ -723,10 +933,6 @@ elif page == "Analytics":
                 x=fpr,
                 y=tpr,
                 name="ROC",
-                line=dict(
-                    color="darkorange",
-                    width=2,
-                ),
             )
         )
 
@@ -736,15 +942,13 @@ elif page == "Analytics":
                 y=[0, 1],
                 name="Random",
                 line=dict(
-                    color="navy",
-                    width=2,
                     dash="dash",
                 ),
             )
         )
 
         fig.update_layout(
-            title="ROC Curve (AUC = 0.992)",
+            title="ROC Curve (AUC = 0.99)",
             xaxis_title="False Positive Rate",
             yaxis_title="True Positive Rate",
             height=400,
@@ -763,7 +967,9 @@ elif page == "Analytics":
 
 elif page == "Settings":
 
-    st.subheader("⚙️ Configuration Settings")
+    st.subheader(
+        "⚙️ Configuration Settings"
+    )
 
     tab1, tab2, tab3 = st.tabs(
         [
@@ -772,6 +978,7 @@ elif page == "Settings":
             "Alerts",
         ]
     )
+
 
     # --------------------------------------------------------
     # Model Settings
@@ -816,6 +1023,7 @@ elif page == "Settings":
                 "✅ Model settings saved!"
             )
 
+
     # --------------------------------------------------------
     # API Settings
     # --------------------------------------------------------
@@ -828,7 +1036,7 @@ elif page == "Settings":
 
         api_url = st.text_input(
             "API URL",
-            "http://localhost:8000",
+            API_URL,
         )
 
         api_timeout = st.number_input(
@@ -850,6 +1058,7 @@ elif page == "Settings":
             st.success(
                 "✅ API settings saved!"
             )
+
 
     # --------------------------------------------------------
     # Alert Settings
