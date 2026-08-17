@@ -481,7 +481,6 @@ def get_stats():
             type,
             timestamp
         FROM transactions
-        LIMIT 100
         """
 
         rows = cassandra_session.execute(
