@@ -24,57 +24,65 @@ logger = logging.getLogger(__name__)
 
 API_URL = "http://localhost:8000"
 
-
 # ============================================================
 # API FUNCTIONS
 # ============================================================
 
 def get_stats():
-
     try:
-
         response = requests.get(
             f"{API_URL}/stats",
-            timeout=5
+            timeout=15
         )
 
         response.raise_for_status()
 
         return response.json()
 
-    except requests.exceptions.RequestException as e:
+    except requests.exceptions.Timeout:
+        logger.error("Stats API request timed out")
+        return None
 
-        logger.error(
+    except requests.exceptions.ConnectionError:
+        logger.error("Could not connect to Stats API")
+        return None
+
+    except Exception as e:
+        logger.exception(
             f"Error getting stats: {e}"
         )
-
         return None
 
 
 def get_transactions(limit=50):
-
     try:
-
         response = requests.get(
             f"{API_URL}/transactions",
             params={"limit": limit},
-            timeout=5
+            timeout=15
         )
 
         response.raise_for_status()
 
         return response.json()
 
-    except requests.exceptions.RequestException as e:
-
+    except requests.exceptions.Timeout:
         logger.error(
-            f"Error getting transactions: {e}"
+            "Transactions API request timed out"
         )
-
         return None
 
+    except requests.exceptions.ConnectionError:
+        logger.error(
+            "Could not connect to Transactions API"
+        )
+        return None
 
-# ============================================================
+    except Exception as e:
+        logger.exception(
+            f"Error getting transactions: {e}"
+        )
+        return None# ============================================================
 # Page Configuration
 # ============================================================
 
@@ -486,7 +494,7 @@ elif page == "Predictions":
             response = requests.post(
                 f"{API_URL}/predict",
                 json=transaction_data,
-                timeout=5,
+                timeout=15,
             )
 
 

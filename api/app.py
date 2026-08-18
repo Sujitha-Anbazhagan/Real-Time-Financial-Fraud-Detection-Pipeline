@@ -557,4 +557,4 @@ def get_stats():
             status_code=500,
             detail=f"Database error: {str(e)}"
         )
-
+    
