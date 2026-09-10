@@ -34,39 +34,75 @@ MODEL_PATH = os.path.join(
     "fraud_detection_model.pkl"
 )
 
-
 # ============================================================
-# Cassandra Configuration
+# Cassandra / Astra DB Configuration
 # ============================================================
 
-CASSANDRA_HOST = "127.0.0.1"
-CASSANDRA_PORT = 9042
-CASSANDRA_KEYSPACE = "fraud_detection"
+from cassandra.auth import PlainTextAuthProvider
 
+ASTRA_SC_BUNDLE = os.getenv("ASTRA_SC_BUNDLE")
+ASTRA_APPLICATION_TOKEN = os.getenv("ASTRA_APPLICATION_TOKEN")
+
+CASSANDRA_KEYSPACE = os.getenv(
+    "CASSANDRA_KEYSPACE",
+    "default_keyspace"
+)
 
 try:
 
-    cassandra_cluster = Cluster(
-        [CASSANDRA_HOST],
-        port=CASSANDRA_PORT
-    )
+    if ASTRA_SC_BUNDLE and ASTRA_APPLICATION_TOKEN:
 
-    cassandra_session = cassandra_cluster.connect(
-        CASSANDRA_KEYSPACE
-    )
+        # Astra DB connection
+        auth_provider = PlainTextAuthProvider(
+            username="token",
+            password=ASTRA_APPLICATION_TOKEN
+        )
 
-    print("Cassandra connection established")
+        cassandra_cluster = Cluster(
+            cloud={
+                "secure_connect_bundle": ASTRA_SC_BUNDLE
+            },
+            auth_provider=auth_provider
+        )
+
+        cassandra_session = cassandra_cluster.connect(
+            CASSANDRA_KEYSPACE
+        )
+
+        print("Astra DB connection established")
+
+    else:
+
+        # Local Cassandra fallback
+        CASSANDRA_HOST = os.getenv(
+            "CASSANDRA_HOST",
+            "127.0.0.1"
+        )
+
+        CASSANDRA_PORT = int(
+            os.getenv(
+                "CASSANDRA_PORT",
+                "9042"
+            )
+        )
+
+        cassandra_cluster = Cluster(
+            [CASSANDRA_HOST],
+            port=CASSANDRA_PORT
+        )
+
+        cassandra_session = cassandra_cluster.connect(
+            CASSANDRA_KEYSPACE
+        )
+
+        print("Local Cassandra connection established")
 
 except Exception as e:
 
     cassandra_cluster = None
     cassandra_session = None
 
-    print(
-        f"Cassandra connection error: {e}"
-    )
-
-
+    print(f"Cassandra connection error: {e}")
 # ============================================================
 # Load Label Encoder
 # ============================================================
