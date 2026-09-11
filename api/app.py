@@ -5,6 +5,8 @@ import os
 import pandas as pd
 from datetime import datetime
 from sklearn.preprocessing import LabelEncoder
+from dotenv import load_dotenv
+load_dotenv()
 
 
 # ============================================================

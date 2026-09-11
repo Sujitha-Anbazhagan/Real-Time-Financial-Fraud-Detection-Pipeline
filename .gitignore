@@ -19,3 +19,4 @@ checkpoint/
 # Astra DB credentials
 api/astra_secure_bundle/
 .env
+astra_bundle_base64.txt
