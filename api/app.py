@@ -37,22 +37,56 @@ MODEL_PATH = os.path.join(
 # ============================================================
 # Cassandra / Astra DB Configuration
 # ============================================================
-
 from cassandra.auth import PlainTextAuthProvider
+import base64
 
-ASTRA_SC_BUNDLE = os.getenv("ASTRA_SC_BUNDLE")
-ASTRA_APPLICATION_TOKEN = os.getenv("ASTRA_APPLICATION_TOKEN")
+
+# ============================================================
+# Cassandra / Astra DB Configuration
+# ============================================================
+
+ASTRA_APPLICATION_TOKEN = os.getenv(
+    "ASTRA_APPLICATION_TOKEN"
+)
+
+ASTRA_SC_BUNDLE_BASE64 = os.getenv(
+    "ASTRA_SC_BUNDLE_BASE64"
+)
 
 CASSANDRA_KEYSPACE = os.getenv(
     "CASSANDRA_KEYSPACE",
-    "default_keyspace"
+    "fraud_detection"
 )
+
 
 try:
 
-    if ASTRA_SC_BUNDLE and ASTRA_APPLICATION_TOKEN:
+    if ASTRA_SC_BUNDLE_BASE64 and ASTRA_APPLICATION_TOKEN:
 
-        # Astra DB connection
+        # ----------------------------------------------------
+        # Recreate Astra Secure Connect Bundle from Base64
+        # ----------------------------------------------------
+
+        ASTRA_SC_BUNDLE_PATH = os.path.join(
+            "/tmp",
+            "secure-connect-bundle.zip"
+        )
+
+        with open(
+            ASTRA_SC_BUNDLE_PATH,
+            "wb"
+        ) as bundle_file:
+
+            bundle_file.write(
+                base64.b64decode(
+                    ASTRA_SC_BUNDLE_BASE64
+                )
+            )
+
+        # ----------------------------------------------------
+        # Connect to Astra DB
+        # ----------------------------------------------------
+
         auth_provider = PlainTextAuthProvider(
             username="token",
             password=ASTRA_APPLICATION_TOKEN
@@ -60,7 +94,8 @@ try:
 
         cassandra_cluster = Cluster(
             cloud={
-                "secure_connect_bundle": ASTRA_SC_BUNDLE
+                "secure_connect_bundle":
+                    ASTRA_SC_BUNDLE_PATH
             },
             auth_provider=auth_provider
         )
@@ -69,11 +104,16 @@ try:
             CASSANDRA_KEYSPACE
         )
 
-        print("Astra DB connection established")
+        print(
+            "Astra DB connection established"
+        )
 
     else:
 
+        # ----------------------------------------------------
         # Local Cassandra fallback
+        # ----------------------------------------------------
+
         CASSANDRA_HOST = os.getenv(
             "CASSANDRA_HOST",
             "127.0.0.1"
@@ -95,14 +135,19 @@ try:
             CASSANDRA_KEYSPACE
         )
 
-        print("Local Cassandra connection established")
+        print(
+            "Local Cassandra connection established"
+        )
+
 
 except Exception as e:
 
     cassandra_cluster = None
     cassandra_session = None
 
-    print(f"Cassandra connection error: {e}")
+    print(
+        f"Cassandra connection error: {e}"
+    )
 # ============================================================
 # Load Label Encoder
 # ============================================================
