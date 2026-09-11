@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # API Configuration
 # ============================================================
 
-API_URL = "http://localhost:8000"
+API_URL = "https://real-time-financial-fraud-detection-rmnx.onrender.com"
 
 # ============================================================
 # API FUNCTIONS
